@@ -12,7 +12,7 @@ A high-performance baseball image annotation tool built with React and TypeScrip
 
 
 
-## ---------->>>> [Added Extra Features] 
+## ------------- >>>> [Added Extra Features] 
 
 - **Undo/Redo (Ctrl+Z / Ctrl+Y)**: Robust 50-step action history.
 - **Save Annotated Image**: Export a high-resolution PNG of the image with overlayed annotations.
@@ -27,4 +27,4 @@ A high-performance baseball image annotation tool built with React and TypeScrip
 - **SVG vs Canvas**: Chosen for superior DOM event handling on vertices and styling flexibility.
 - **AI Partnership**: AI assisted in optimizing complex coordinate rotation math and refining the professional UI aesthetics (Tailwind/Framer Motion).
 
-## --------------------------------------------------- Developed by Asif Iliyas -------------------------------------------------
+## ------------- >>>> Developed by Asif Iliyas 
