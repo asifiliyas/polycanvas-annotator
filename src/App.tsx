@@ -3,7 +3,7 @@ import { useAnnotation } from './useAnnotation';
 import Toolbar from './Toolbar';
 import Canvas from './Canvas';
 import defaultBaseball from './assets/baseball.png';
-import { Box, Code, Menu, X, Sun, Moon } from 'lucide-react';
+import { Box, Code, Menu, X, Sun, Moon, Undo2, Redo2, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
 
@@ -212,6 +212,37 @@ const App: React.FC = () => {
         )}
 
         <main className="flex-grow flex flex-col relative overflow-hidden bg-transparent">
+          {/* Mobile Sub-Header for Quick Actions */}
+          <div className="md:hidden shrink-0 h-12 flex items-center justify-between px-6 border-b border-white/5 bg-white/5 backdrop-blur-md">
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Quick Actions</span>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={undo}
+                disabled={!canUndo}
+                className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-30 transition-all text-white"
+                title="Undo"
+              >
+                <Undo2 size={16} />
+              </button>
+              <button 
+                onClick={redo}
+                disabled={!canRedo}
+                className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-30 transition-all text-white"
+                title="Redo"
+              >
+                <Redo2 size={16} />
+              </button>
+              <div className="w-px h-4 bg-white/10 mx-1" />
+              <button 
+                onClick={reset}
+                className="p-2 rounded-lg hover:bg-red-500/10 text-red-500 transition-all"
+                title="Clear All"
+              >
+                <RotateCcw size={16} />
+              </button>
+            </div>
+          </div>
+
           <div className="flex-grow flex items-center justify-center px-4 md:px-8 relative">
             <Canvas 
               imageSrc={imageSrc || defaultBaseball}
