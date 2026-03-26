@@ -12,7 +12,7 @@ A high-performance baseball image annotation tool built with React and TypeScrip
 
 
 
-## --------------------------------------------------- [Added Extra Features] ---------------------------------------------------
+## ---------->>>> [Added Extra Features] 
 
 - **Undo/Redo (Ctrl+Z / Ctrl+Y)**: Robust 50-step action history.
 - **Save Annotated Image**: Export a high-resolution PNG of the image with overlayed annotations.
