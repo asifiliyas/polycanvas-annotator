@@ -8,6 +8,8 @@ export interface Polygon {
   points: Point[];
   isClosed: boolean;
   color: string;
+  label?: string;
+  area?: number;
 }
 
 export interface AnnotationState {

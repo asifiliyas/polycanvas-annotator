@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 :root {
   --background: #09090b;
   --foreground: #fafafa;
@@ -88,4 +90,17 @@ body {
   pointer-events: none;
   z-index: 50;
   margin-bottom: 5px;
+}
+
+@keyframes dash {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-\[dash_1\.5s_linear_infinite\] {
+  animation: dash 1.5s linear infinite;
 }

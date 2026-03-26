@@ -1,21 +1,80 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
-import { Point, Polygon } from "./types";
+import { useState, useCallback, useEffect } from "react";
+import type { Point, Polygon } from "./types";
 
 const MAX_HISTORY = 50;
+const STORAGE_KEY = 'annotation_app_data';
 
-export const useAnnotation = (initialImageWidth: number, initialImageHeight: number) => {
+const calculateArea = (points: Point[]) => {
+  if (points.length < 3) return 0;
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const j = (i + 1) % points.length;
+    area += points[i].x * points[j].y;
+    area -= points[j].x * points[i].y;
+  }
+  return Math.abs(area) / 2;
+};
+
+const playSuccessSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+    oscillator.frequency.exponentialRampToValueAtTime(1046.50, audioCtx.currentTime + 0.1); // C6
+
+    gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.4);
+  } catch (e) {
+    console.warn("Audio feedback failed", e);
+  }
+};
+
+export const useAnnotation = () => {
   const [polygons, setPolygons] = useState<Polygon[]>([]);
-  const [activePolygonId, setActivePolygonId] = useState<string | null>(null);
   const [history, setHistory] = useState<Polygon[][]>([[]]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [rotation, setRotation] = useState(0);
 
-  const saveToHistory = useCallback((currentPolygons: Polygon[]) => {
+  // Load from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const { polygons: savedPolys, imageSrc: savedImg, rotation: savedRot } = JSON.parse(saved);
+        if (savedPolys) {
+          setPolygons(savedPolys);
+          setHistory([savedPolys]);
+          setHistoryIndex(0);
+        }
+        if (savedImg) setImageSrc(savedImg);
+        if (savedRot !== undefined) setRotation(savedRot);
+      } catch (e) {
+        console.error("Failed to load saved data", e);
+      }
+    }
+  }, []);
+
+  // Save to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ polygons, imageSrc, rotation }));
+  }, [polygons, imageSrc, rotation]);
+
+  const updateStateAndHistory = useCallback((newPolygons: Polygon[]) => {
+    setPolygons(newPolygons);
     setHistory((prev) => {
       const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(JSON.parse(JSON.stringify(currentPolygons)));
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
+      newHistory.push(JSON.parse(JSON.stringify(newPolygons)));
+      if (newHistory.length > MAX_HISTORY) newHistory.shift();
       return newHistory;
     });
     setHistoryIndex((prev) => (prev < MAX_HISTORY - 1 ? prev + 1 : prev));
@@ -38,103 +97,193 @@ export const useAnnotation = (initialImageWidth: number, initialImageHeight: num
   }, [historyIndex, history]);
 
   const addPoint = useCallback((point: Point) => {
-    setPolygons((prev) => {
-      const lastPolygon = prev[prev.length - 1];
-      let newPolygons: Polygon[];
+    const lastPolygon = polygons[polygons.length - 1];
+    let newPolygons: Polygon[];
 
-      if (!lastPolygon || lastPolygon.isClosed) {
-        // Create new polygon
-        const newPolygon: Polygon = {
-          id: crypto.randomUUID(),
-          points: [point],
-          isClosed: false,
-          color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
-        };
-        newPolygons = [...prev, newPolygon];
-      } else {
-        // Add point to active polygon
-        newPolygons = prev.map((p, idx) =>
-          idx === prev.length - 1 ? { ...p, points: [...p.points, point] } : p
-        );
-      }
-      saveToHistory(newPolygons);
-      return newPolygons;
-    });
-  }, [saveToHistory]);
+    if (!lastPolygon || lastPolygon.isClosed) {
+      const newPolygon: Polygon = {
+        id: crypto.randomUUID(),
+        points: [point],
+        isClosed: false,
+        color: `hsl(${Math.random() * 360}, 75%, 55%)`,
+        label: `Object ${polygons.length + 1}`
+      };
+      newPolygons = [...polygons, newPolygon];
+    } else {
+      newPolygons = polygons.map((p, idx) =>
+        idx === polygons.length - 1 ? { ...p, points: [...p.points, point] } : p
+      );
+    }
+    updateStateAndHistory(newPolygons);
+  }, [polygons, updateStateAndHistory]);
 
   const closeActivePolygon = useCallback(() => {
-    setPolygons((prev) => {
-      const newPolygons = prev.map((p, idx) =>
-        idx === prev.length - 1 && p.points.length >= 3 ? { ...p, isClosed: true } : p
-      );
-      if (JSON.stringify(prev) !== JSON.stringify(newPolygons)) {
-        saveToHistory(newPolygons);
-      }
-      return newPolygons;
-    });
-  }, [saveToHistory]);
+    const active = polygons[polygons.length - 1];
+    if (!active || active.isClosed || active.points.length < 3) return;
+    
+    const newPolygons = polygons.map((p, idx) =>
+      idx === polygons.length - 1 ? { 
+        ...p, 
+        isClosed: true, 
+        area: calculateArea(p.points) 
+      } : p
+    );
+    updateStateAndHistory(newPolygons);
+    playSuccessSound();
+  }, [polygons, updateStateAndHistory]);
 
   const deletePolygon = useCallback((id: string) => {
-    setPolygons((prev) => {
-      const newPolygons = prev.filter((p) => p.id !== id);
-      saveToHistory(newPolygons);
-      return newPolygons;
-    });
-  }, [saveToHistory]);
+    const newPolygons = polygons.filter((p) => p.id !== id);
+    updateStateAndHistory(newPolygons);
+  }, [polygons, updateStateAndHistory]);
+
+  const updateLabel = useCallback((id: string, label: string) => {
+    const newPolygons = polygons.map(p => p.id === id ? { ...p, label } : p);
+    updateStateAndHistory(newPolygons);
+  }, [polygons, updateStateAndHistory]);
+
+  const rotate = useCallback(() => {
+    setRotation(prev => (prev + 90) % 360);
+  }, []);
 
   const reset = useCallback(() => {
     setPolygons([]);
     setHistory([[]]);
     setHistoryIndex(0);
+    setRotation(0);
   }, []);
 
   const updatePoint = useCallback((polygonId: string, pointIndex: number, newPoint: Point) => {
-    setPolygons((prev) => {
-      const newPolygons = prev.map((p) => {
-        if (p.id === polygonId) {
-          const newPoints = [...p.points];
-          newPoints[pointIndex] = newPoint;
-          return { ...p, points: newPoints };
-        }
-        return p;
-      });
-      // We don't save to history for every mouse move during drag
-      // Only when the drag starts/ends in the UI component
-      return newPolygons;
-    });
+    setPolygons((prev) => prev.map((p) => {
+      if (p.id === polygonId) {
+        const newPoints = [...p.points];
+        newPoints[pointIndex] = newPoint;
+        return { ...p, points: newPoints, area: p.isClosed ? calculateArea(newPoints) : p.area };
+      }
+      return p;
+    }));
   }, []);
+
+  const saveOnDragEnd = useCallback(() => {
+    setHistory((prev) => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(JSON.parse(JSON.stringify(polygons)));
+      if (newHistory.length > MAX_HISTORY) newHistory.shift();
+      return newHistory;
+    });
+    setHistoryIndex((prev) => (prev < MAX_HISTORY - 1 ? prev + 1 : prev));
+  }, [polygons, historyIndex]);
+
+  const handleImageUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setImageSrc(result);
+      reset();
+    };
+    reader.readAsDataURL(file);
+  };
 
   const exportJSON = useCallback(() => {
     const data = {
-      image: "baseball.png",
-      timestamp: new Date().toISOString(),
-      polygons: polygons.map(p => ({
+      image_source: imageSrc ? "user_upload" : "default_static",
+      export_time: new Date().toISOString(),
+      viewport_rotation: rotation,
+      data: polygons.map(p => ({
         id: p.id,
+        label: p.label,
         points: p.points,
-        isClosed: p.isClosed
+        area_px: p.area,
+        is_closed: p.isClosed
       }))
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `annotation-${Date.now()}.json`;
+    link.download = `annotation-data.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [polygons]);
+  }, [polygons, imageSrc, rotation]);
+
+  const saveAnnotatedImage = useCallback(async () => {
+    if (!imageSrc) return;
+    
+    const img = new Image();
+    img.src = imageSrc;
+    await new Promise(r => img.onload = r);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Draw rotated image
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    ctx.restore();
+
+    // Draw polygons
+    polygons.forEach(poly => {
+      if (poly.points.length < 2) return;
+
+      ctx.beginPath();
+      ctx.moveTo(poly.points[0].x, poly.points[0].y);
+      poly.points.slice(1).forEach(pt => ctx.lineTo(pt.x, pt.y));
+      
+      if (poly.isClosed) {
+        ctx.closePath();
+        ctx.fillStyle = poly.color.replace('hsl', 'hsla').replace(')', ', 0.3)');
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = poly.color;
+      ctx.lineWidth = 4;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Draw vertices
+      poly.points.forEach(pt => {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.strokeStyle = poly.color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+    });
+
+    const link = document.createElement('a');
+    link.download = 'annotated-image-pro.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }, [imageSrc, rotation, polygons]);
 
   return {
     polygons,
+    imageSrc,
+    rotation,
     undo,
     redo,
     addPoint,
     closeActivePolygon,
     deletePolygon,
+    updateLabel,
+    rotate,
     reset,
     updatePoint,
     exportJSON,
+    saveAnnotatedImage,
+    handleImageUpload,
     canUndo: historyIndex > 0,
     canRedo: historyIndex < history.length - 1,
-    saveToHistory
+    saveToHistory: saveOnDragEnd
   };
 };
+
+
